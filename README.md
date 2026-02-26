@@ -31,3 +31,46 @@ To ensure smooth teamwork:
 
 Contributors:  
 - **Shea, Aron**
+
+---
+
+## Nix Flake Quickstart (recommended)
+
+This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and pins the *two ESP32 package indexes* needed for this project:
+
+- Espressif Arduino-ESP32 index
+- Bluepad32 Arduino-ESP32 fork index
+
+That means a new contributor can build on macOS/Linux without installing Arduino IDE, platform packages, or toolchains manually.
+
+### 1) Enter the dev shell
+
+```sh
+nix develop -c $SHELL
+```
+
+### 2) Confirm the ESP32 + Bluepad32 core is present
+
+```sh
+arduino-cli core list
+```
+
+You should see `esp32-bluepad32:esp32` installed.
+
+### 3) Build the firmware
+
+The target board for this project is **ESP32 Dev Module** from the Bluepad32 core:
+
+- FQBN: `esp32-bluepad32:esp32:esp32`
+
+Compile:
+
+```sh
+arduino-cli compile \
+	--fqbn esp32-bluepad32:esp32:esp32 \
+	Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
+```
+
+### Notes on Bluepad32 library
+
+The sketch includes `#include <Bluepad32.h>`. In this setup, the header is provided by the **esp32-bluepad32 platform package** (it bundles the library), so `arduino-cli lib list` may still show “No libraries installed” even though the include resolves.
