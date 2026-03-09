@@ -5,6 +5,93 @@ Preferences prefs;
 const char *NVS_NAMESPACE = "hwrc";
 const char *NVS_KEY_STEER_TRIM = "trim";
 
+// Optional: WiFi OTA flashing (Arduino IDE network upload)
+#include <WiFi.h>
+#include <ArduinoOTA.h>
+
+// Third-party (Arduino Library Manager): "StreamUtils" by Benoit Blanchon
+// Provides LoggingPrint which duplicates writes to a second Print.
+#include <StreamUtils.h>
+
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#endif
+
+#ifndef WIFI_SSID
+#define WIFI_SSID ""
+#endif
+
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD ""
+#endif
+
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME ""
+#endif
+
+// If set, Arduino IDE will require this password for OTA uploads.
+// Leave blank for no password.
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD ""
+#endif
+
+// Optional: Stream logs over WiFi using a simple TCP server.
+// View logs on your computer with: `nc <board-ip> <port>`
+#ifndef LOG_TCP_PORT
+#define LOG_TCP_PORT 2323
+#endif
+
+static WiFiServer logServer(LOG_TCP_PORT);
+static WiFiClient logClient;
+
+static volatile bool otaInProgress = false;
+static volatile int lastOtaPercentPrinted = -1;
+
+// Arduino IDE cannot open Serial Monitor on an OTA "Network port".
+// We keep ALL existing Serial.print/println/printf calls and mirror them to the TCP client.
+// This uses StreamUtils::LoggingPrint rather than a custom tee implementation.
+
+static auto& USBSerial = ::Serial;
+static StreamUtils::LoggingPrint SerialMirror(USBSerial, logClient);
+
+// Redefine Serial in THIS sketch so existing Serial.* calls are mirrored to WiFi logs.
+#define Serial SerialMirror
+
+static bool isLogClientConnected() {
+  return logClient && logClient.connected();
+}
+
+static void handleLogServer() {
+  if (WiFi.status() != WL_CONNECTED || LOG_TCP_PORT <= 0) {
+    return;
+  }
+
+  if (!logServer) {
+    // Defensive: in case begin() was never called.
+    logServer.begin();
+    logServer.setNoDelay(true);
+  }
+
+  if (!isLogClientConnected()) {
+    WiFiClient newClient = logServer.available();
+    if (newClient) {
+      logClient = newClient;
+      logClient.setNoDelay(true);
+
+      String ip = WiFi.localIP().toString();
+      // Print via Serial so it also goes to USB.
+      Serial.printf("Connected to HotWheelsRC logs at %s:%d\n", ip.c_str(), LOG_TCP_PORT);
+      Serial.printf("WiFi RSSI: %ld dBm\n", WiFi.RSSI());
+      Serial.println("Tip: this sketch only prints when events happen (boot, controller connect/disconnect, OTA, etc.)");
+    }
+  } else {
+    // Drain any input so the socket stays healthy (we don't implement commands).
+    while (logClient.available()) {
+      (void)logClient.read();
+    }
+  }
+}
+
 const int servoPin = 9;
 const int Forward = 12;
 const int Back = 11;
@@ -65,10 +152,85 @@ static void saveSteeringTrim() {
   prefs.putInt(NVS_KEY_STEER_TRIM, STEERING_TRIM_DEG);
 }
 
+static void setupWiFiAndOTA() {
+  if (strlen(WIFI_SSID) == 0) {
+    Serial.println("WiFi OTA disabled (WIFI_SSID not set). See wifi_secrets.example.h");
+    return;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.printf("Connecting to WiFi SSID '%s'", WIFI_SSID);
+  const uint32_t startMs = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startMs) < 20000) {
+    delay(250);
+    Serial.print('.');
+  }
+  Serial.println();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connect failed; OTA will not be available.");
+    return;
+  }
+
+  // Improve OTA speed/stability: disable WiFi power saving.
+  // (Power save can introduce latency and reduce throughput.)
+  WiFi.setSleep(false);
+
+  // Increase TX power (can help OTA throughput on weak signals).
+  // Safe no-op if the core doesn't support this enum on your version.
+#if defined(WIFI_POWER_19_5dBm)
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+#endif
+
+  // Start log server first so subsequent messages can be viewed over WiFi.
+  if (LOG_TCP_PORT > 0) {
+    logServer.begin();
+    logServer.setNoDelay(true);
+  }
+
+  String ip = WiFi.localIP().toString();
+  Serial.printf("WiFi connected. IP: %s\n", ip.c_str());
+  if (LOG_TCP_PORT > 0) {
+    Serial.printf("WiFi logs: nc %s %d\n", ip.c_str(), LOG_TCP_PORT);
+  }
+
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  if (strlen(OTA_PASSWORD) > 0) {
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+  }
+
+  ArduinoOTA.onStart([]() {
+    otaInProgress = true;
+    lastOtaPercentPrinted = -1;
+    Serial.println("OTA update start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("OTA update end");
+    otaInProgress = false;
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    const int pct = (total > 0) ? static_cast<int>((progress * 100U) / total) : 0;
+    // Printing too frequently can slow OTA. Only print every 5%.
+    if (pct == 100 || (pct % 5 == 0 && pct != lastOtaPercentPrinted)) {
+      lastOtaPercentPrinted = pct;
+      // Use USBSerial directly to avoid extra network traffic while uploading.
+      USBSerial.printf("OTA progress: %d%%\r", pct);
+    }
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("OTA error[%u]\n", error);
+    otaInProgress = false;
+  });
+
+  ArduinoOTA.begin();
+  Serial.printf("OTA ready. Hostname: %s\n", OTA_HOSTNAME);
+}
+
 void onConnectedController(ControllerPtr ctl) {
   if (myController == nullptr) {
-    Serial.print("CALLBACK: Controller is connected, index=");
-    Serial.println(ctl->index());
+    Serial.printf("CALLBACK: Controller is connected, index=%d\n", ctl->index());
     myController = ctl;
 
     // Initialize trim latch state on connect
@@ -83,8 +245,7 @@ void onConnectedController(ControllerPtr ctl) {
 
 void onDisconnectedController(ControllerPtr ctl) {
   if (myController == ctl) {
-    Serial.print("CALLBACK: Controller is disconnected from index=");
-    Serial.println(ctl->index());
+    Serial.printf("CALLBACK: Controller is disconnected from index=%d\n", ctl->index());
 
     angle = 90;
 
@@ -221,11 +382,13 @@ void updateMotorSpeed() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  USBSerial.begin(115200);
   Serial.println("Starting RC Car Controller...");
 
   prefs.begin(NVS_NAMESPACE, false);
   loadSteeringTrim();
+
+  setupWiFiAndOTA();
 
   BP32.setup(&onConnectedController, &onDisconnectedController);
   BP32.forgetBluetoothKeys();
@@ -255,6 +418,15 @@ void setup() {
 }
 
 void loop() {
+  handleLogServer();
+  ArduinoOTA.handle();
+
+  // During OTA, let the network stack and updater run with minimal extra work.
+  if (otaInProgress) {
+    delay(0);
+    return;
+  }
+
   BP32.update();
   processController();
 
