@@ -98,7 +98,7 @@ Set `PORT` to the port reported by the previous command. macOS ports commonly st
 #### Flash and monitor with the flake
 
 ```sh
-PORT=/dev/cu.usbserial-XXXX
+PORT="<serial-port>"
 
 nix run .#flash -- "$PORT"
 nix run .#monitor -- "$PORT"
