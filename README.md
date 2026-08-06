@@ -71,6 +71,15 @@ nix build
 
 The generated firmware files are available under `./result/`. The `result` symlink is ignored by Git.
 
+To invoke the Nix-provided Arduino CLI directly instead, run this from the development shell:
+
+```sh
+nix develop
+arduino-cli compile \
+	--fqbn esp32-bluepad32:esp32:esp32 \
+	Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
+```
+
 ### 4) Flash and monitor the board
 
 Enter the development shell if it is not already active, then identify the connected board:
