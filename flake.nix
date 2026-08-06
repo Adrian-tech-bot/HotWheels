@@ -166,6 +166,54 @@
           '';
         };
 
+        flash = pkgs.writeShellApplication {
+          name = "flash";
+          runtimeInputs = [
+            arduinoCli
+            python
+          ];
+          text = ''
+            if [ "$#" -ne 1 ]; then
+              echo "Usage: flash <serial-port>" >&2
+              exit 2
+            fi
+            if [ ! -d result ]; then
+              echo "No ./result build found; run 'nix build' first." >&2
+              exit 1
+            fi
+
+            export TMPDIR="''${TMPDIR:-/tmp}"
+            export HOME="$TMPDIR/hot-wheels-arduino-home"
+            mkdir -p "$HOME"
+            exec arduino-cli upload \
+              --input-dir result \
+              --port "$1" \
+              --fqbn esp32-bluepad32:esp32:esp32 \
+              --verify
+          '';
+        };
+
+        monitor = pkgs.writeShellApplication {
+          name = "monitor";
+          runtimeInputs = [
+            arduinoCli
+            python
+          ];
+          text = ''
+            if [ "$#" -ne 1 ]; then
+              echo "Usage: monitor <serial-port>" >&2
+              exit 2
+            fi
+
+            export TMPDIR="''${TMPDIR:-/tmp}"
+            export HOME="$TMPDIR/hot-wheels-arduino-home"
+            mkdir -p "$HOME"
+            exec arduino-cli monitor \
+              --port "$1" \
+              --config baudrate=115200
+          '';
+        };
+
         runCheck =
           pkg:
           pkgs.runCommand "hot-wheels-${pkg.name}-check" { nativeBuildInputs = [ pkg ]; } ''
@@ -181,7 +229,13 @@
           arduino-cli = arduinoCli;
           default = firmware;
           firmware-check = firmwareCheck;
-          inherit check firmware lint;
+          inherit
+            check
+            firmware
+            flash
+            lint
+            monitor
+            ;
         };
 
         devShells.default = pkgs.mkShell {
@@ -195,6 +249,8 @@
           packages = [
             arduinoCli
             python
+            flash
+            monitor
             pkgs.nixd
             pkgs.statix
             pkgs.nixfmt
