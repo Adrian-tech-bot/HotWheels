@@ -85,15 +85,8 @@ Set `PORT` to the port reported by the previous command. macOS ports commonly st
 ```sh
 PORT=/dev/cu.usbserial-XXXX
 
-arduino-cli upload \
-	--input-dir result \
-	--port "$PORT" \
-	--fqbn esp32-bluepad32:esp32:esp32 \
-	--verify
-
-arduino-cli monitor \
-	--port "$PORT" \
-	--config baudrate=115200
+nix run .#flash -- "$PORT"
+nix run .#monitor -- "$PORT"
 ```
 
 If the board does not enter upload mode automatically, hold its **BOOT** button while starting the upload, then release it when the upload begins.
@@ -112,6 +105,8 @@ nix flake check
 # Run an individual command
 nix run .#lint
 nix run .#firmware-check
+nix run .#flash -- "$PORT"
+nix run .#monitor -- "$PORT"
 ```
 
 The development shell also installs a pre-commit hook that runs `nix flake check`.
