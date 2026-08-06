@@ -8,9 +8,7 @@
   },
   "search.exclude": {
     "**/.direnv": true,
-    "**/result": true,
-    "**/archive": true,
-    "**/hardware_design": true
+    "**/result": true
   },
   "nix.enableLanguageServer": true,
   "nix.serverPath": "nixd",
