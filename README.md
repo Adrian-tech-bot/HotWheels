@@ -71,6 +71,24 @@ arduino-cli compile \
 	Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
 ```
 
+### Development checks
+
+The flake provides formatting, linting, and firmware compilation checks:
+
+```sh
+# Format Nix files
+nix fmt
+
+# Check formatting, Nix linting, and firmware compilation
+nix flake check
+
+# Run an individual command
+nix run .#lint
+nix run .#firmware
+```
+
+The development shell also installs a pre-commit hook that runs `nix flake check`.
+
 ### Notes on Bluepad32 library
 
 The sketch includes `#include <Bluepad32.h>`. In this setup, the header is provided by the **esp32-bluepad32 platform package** (it bundles the library), so `arduino-cli lib list` may still show “No libraries installed” even though the include resolves.
