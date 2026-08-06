@@ -46,8 +46,7 @@
     {
       "id": "serialPort",
       "type": "promptString",
-      "description": "Serial port for the ESP32 board",
-      "default": "/dev/cu.usbserial-XXXX"
+      "description": "Serial port for the ESP32 board"
     }
   ]
 }
