@@ -1,0 +1,27 @@
+{
+  "files.associations": {
+    "*.ino": "cpp"
+  },
+  "files.exclude": {
+    "**/.direnv": true,
+    "**/result": true
+  },
+  "search.exclude": {
+    "**/.direnv": true,
+    "**/result": true,
+    "**/archive": true,
+    "**/hardware_design": true
+  },
+  "nix.enableLanguageServer": true,
+  "nix.serverPath": "nixd",
+  "nix.serverSettings": {
+    "nixd": {
+      "formatting": {
+        "command": [
+          "nixfmt"
+        ]
+      }
+    }
+  },
+  "C_Cpp.default.cppStandard": "gnu++11"
+}
