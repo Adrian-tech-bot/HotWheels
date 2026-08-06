@@ -34,10 +34,6 @@ Contributors:
 
 ---
 
-## Installing Nix
-
-Nix is required to use this development environment. Install it using either the [official Nix installation guide](https://nixos.org/download/) or the [Determinate Nix Installer](https://manual.determinate.systems/installation/). The Determinate installer enables flakes by default.
-
 ## Nix Flake Quickstart (recommended)
 
 This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and pins the *two ESP32 package indexes* needed for this project:
@@ -46,6 +42,10 @@ This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and
 - Bluepad32 Arduino-ESP32 fork index
 
 That means a new contributor can build on macOS/Linux without installing Arduino IDE, platform packages, or toolchains manually.
+
+### Installing Nix
+
+Nix is required to use this development environment. Install it using either the [official Nix installation guide](https://nixos.org/download/) or the [Determinate Nix Installer](https://manual.determinate.systems/installation/). The Determinate installer enables flakes by default.
 
 ### 1) Enter the dev shell
 
