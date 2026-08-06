@@ -43,6 +43,10 @@ This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and
 
 That means a new contributor can build on macOS/Linux without installing Arduino IDE, platform packages, or toolchains manually.
 
+### Prerequisite: install Nix
+
+If Nix is not installed, follow the [official Nix installation instructions](https://nixos.org/download/). After installation, open a new terminal before continuing.
+
 ### 1) Enter the dev shell
 
 ```sh
