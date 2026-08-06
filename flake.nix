@@ -132,7 +132,25 @@
 
         python = pkgs.python3.withPackages (ps: [ ps.pyserial ]);
 
-        firmware = pkgs.writeShellApplication {
+        firmware =
+          pkgs.runCommand "hot-wheels-firmware"
+            {
+              nativeBuildInputs = [
+                arduinoCli
+                python
+              ];
+            }
+            ''
+              export TMPDIR="''${TMPDIR:-/tmp}"
+              export HOME="$TMPDIR/hot-wheels-arduino-home"
+              mkdir -p "$HOME" "$out"
+              arduino-cli compile \
+                --fqbn esp32-bluepad32:esp32:esp32 \
+                --output-dir "$out" \
+                ${self}/Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
+            '';
+
+        firmwareCheck = pkgs.writeShellApplication {
           name = "firmware-check";
           runtimeInputs = [
             arduinoCli
@@ -161,7 +179,8 @@
       {
         packages = {
           arduino-cli = arduinoCli;
-          default = arduinoCli;
+          default = firmware;
+          firmware-check = firmwareCheck;
           inherit check firmware lint;
         };
 
@@ -193,7 +212,7 @@
         checks = {
           formatting = treefmt.config.build.check self;
           lint = runCheck lint;
-          firmware = runCheck firmware;
+          inherit firmware;
         };
       }
     );
