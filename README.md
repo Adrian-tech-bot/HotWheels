@@ -47,10 +47,6 @@ This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and
 
 That means a new contributor can build on macOS/Linux without installing Arduino IDE, platform packages, or toolchains manually.
 
-### Prerequisite: install Nix
-
-If Nix is not installed, follow the [official Nix installation instructions](https://nixos.org/download/). After installation, open a new terminal before continuing.
-
 ### 1) Enter the dev shell
 
 ```sh
@@ -125,6 +121,10 @@ nix run .#monitor -- "$PORT"
 ```
 
 The development shell also installs a pre-commit hook that runs `nix flake check`.
+
+### VS Code workflow
+
+The repository includes editor settings and tasks in `.vscode/`. Extension choices are intentionally left to each contributor. In the command palette, use **Tasks → Run Task** to run the Nix build, formatter, flake check, board listing, flash, and serial monitor commands. The flash task builds the firmware first and then prompts for the board's serial port. If your editor does not automatically load `.envrc`, run `nix develop` manually.
 
 ### Notes on Bluepad32 library
 
