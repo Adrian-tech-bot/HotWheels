@@ -63,13 +63,40 @@ The target board for this project is **ESP32 Dev Module** from the Bluepad32 cor
 
 - FQBN: `esp32-bluepad32:esp32:esp32`
 
-Compile:
+Build with Nix:
 
 ```sh
-arduino-cli compile \
-	--fqbn esp32-bluepad32:esp32:esp32 \
-	Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
+nix build
 ```
+
+The generated firmware files are available under `./result/`. The `result` symlink is ignored by Git.
+
+### 4) Flash and monitor the board
+
+Enter the development shell if it is not already active, then identify the connected board:
+
+```sh
+nix develop
+arduino-cli board list
+```
+
+Set `PORT` to the port reported by the previous command. macOS ports commonly start with `/dev/cu.`, while Linux ports commonly start with `/dev/ttyUSB` or `/dev/ttyACM`:
+
+```sh
+PORT=/dev/cu.usbserial-XXXX
+
+arduino-cli upload \
+	--input-dir result \
+	--port "$PORT" \
+	--fqbn esp32-bluepad32:esp32:esp32 \
+	--verify
+
+arduino-cli monitor \
+	--port "$PORT" \
+	--config baudrate=115200
+```
+
+If the board does not enter upload mode automatically, hold its **BOOT** button while starting the upload, then release it when the upload begins.
 
 ### Development checks
 
@@ -84,7 +111,7 @@ nix flake check
 
 # Run an individual command
 nix run .#lint
-nix run .#firmware
+nix run .#firmware-check
 ```
 
 The development shell also installs a pre-commit hook that runs `nix flake check`.
