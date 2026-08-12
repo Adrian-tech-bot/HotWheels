@@ -83,25 +83,19 @@
               nixfmt.enable = true;
               prettier.enable = true;
               statix.enable = true;
+              deadnix.enable = true;
             };
 
             settings = treefmtCommon.settings // {
-              formatter = {
-                deadnix = {
-                  command = "${pkgs.deadnix}/bin/deadnix";
-                  options = [ "--edit" ];
-                  includes = [ "*.nix" ];
-                };
-                clang-format.includes = [
-                  "*.c"
-                  "*.cc"
-                  "*.cpp"
-                  "*.h"
-                  "*.hh"
-                  "*.hpp"
-                  "*.ino"
-                ];
-              };
+              formatter.clang-format.includes = [
+                "*.c"
+                "*.cc"
+                "*.cpp"
+                "*.h"
+                "*.hh"
+                "*.hpp"
+                "*.ino"
+              ];
             };
           }
         );
@@ -115,14 +109,11 @@
             programs = {
               nixfmt.enable = true;
               statix.enable = true;
+              deadnix.enable = true;
             };
 
             settings = treefmtCommon.settings // {
-              formatter.deadnix = {
-                command = "${pkgs.deadnix}/bin/deadnix";
-                options = [ "--fail" ];
-                includes = [ "*.nix" ];
-              };
+              formatter.deadnix.options = [ "--fail" ];
             };
           }
         );
