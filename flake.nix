@@ -81,7 +81,6 @@
           settings.global.excludes = [
             ".direnv/**"
             "archive/**"
-            "hardware_design/**"
           ];
         };
 
