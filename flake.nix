@@ -70,57 +70,62 @@
           inherit system overlays;
         };
 
-        treefmt = treefmt-nix.lib.evalModule pkgs {
+        treefmtCommon = {
           projectRootFile = "flake.nix";
-
-          programs = {
-            clang-format.enable = true;
-            nixfmt.enable = true;
-            prettier.enable = true;
-            statix.enable = true;
-          };
-
-          settings.formatter.deadnix = {
-            command = "${pkgs.deadnix}/bin/deadnix";
-            options = [ "--edit" ];
-            includes = [ "*.nix" ];
-          };
-
-          # clang-format's default file set does not include Arduino sketches.
-          settings.formatter.clang-format.includes = [
-            "*.c"
-            "*.cc"
-            "*.cpp"
-            "*.h"
-            "*.hh"
-            "*.hpp"
-            "*.ino"
-          ];
-
-          settings.global.excludes = [
-            ".direnv/**"
-          ];
-        };
-
-        treefmtCheck = treefmt-nix.lib.evalModule pkgs {
-          # Keep CI on the existing formatting baseline until legacy files are
-          # reformatted in a separate change. Deadnix is included here as a
-          # read-only check for unused Nix bindings.
-          projectRootFile = "flake.nix";
-
-          programs = {
-            nixfmt.enable = true;
-            statix.enable = true;
-          };
-
-          settings.formatter.deadnix = {
-            command = "${pkgs.deadnix}/bin/deadnix";
-            options = [ "--fail" ];
-            includes = [ "*.nix" ];
-          };
-
           settings.global.excludes = [ ".direnv/**" ];
         };
+
+        treefmt = treefmt-nix.lib.evalModule pkgs (
+          treefmtCommon
+          // {
+            programs = {
+              clang-format.enable = true;
+              nixfmt.enable = true;
+              prettier.enable = true;
+              statix.enable = true;
+            };
+
+            settings = treefmtCommon.settings // {
+              formatter = {
+                deadnix = {
+                  command = "${pkgs.deadnix}/bin/deadnix";
+                  options = [ "--edit" ];
+                  includes = [ "*.nix" ];
+                };
+                clang-format.includes = [
+                  "*.c"
+                  "*.cc"
+                  "*.cpp"
+                  "*.h"
+                  "*.hh"
+                  "*.hpp"
+                  "*.ino"
+                ];
+              };
+            };
+          }
+        );
+
+        treefmtCheck = treefmt-nix.lib.evalModule pkgs (
+          treefmtCommon
+          // {
+            # Keep CI on the existing formatting baseline until legacy files are
+            # reformatted in a separate change. Deadnix is included here as a
+            # read-only check for unused Nix bindings.
+            programs = {
+              nixfmt.enable = true;
+              statix.enable = true;
+            };
+
+            settings = treefmtCommon.settings // {
+              formatter.deadnix = {
+                command = "${pkgs.deadnix}/bin/deadnix";
+                options = [ "--fail" ];
+                includes = [ "*.nix" ];
+              };
+            };
+          }
+        );
 
         preCommit = pre-commit-hooks.lib.${system}.run {
           src = self;
