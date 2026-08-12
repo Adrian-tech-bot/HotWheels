@@ -254,10 +254,7 @@
             flash
             monitor
             pkgs.nixd
-            pkgs.deadnix
-            pkgs.statix
             pkgs.nixfmt
-            treefmt.config.build.wrapper
           ];
 
           shellHook = preCommit.shellHook + ''
