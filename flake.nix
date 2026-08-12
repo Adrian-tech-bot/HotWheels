@@ -156,6 +156,7 @@
               nativeBuildInputs = [
                 arduinoCli
                 pkgs.jq
+                python3
               ];
             }
             ''
