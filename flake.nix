@@ -74,14 +74,39 @@
           projectRootFile = "flake.nix";
 
           programs = {
+            clang-format.enable = true;
+            nixfmt.enable = true;
+            prettier.enable = true;
+            statix.enable = true;
+          };
+
+          # clang-format's default file set does not include Arduino sketches.
+          settings.formatter.clang-format.includes = [
+            "*.c"
+            "*.cc"
+            "*.cpp"
+            "*.h"
+            "*.hh"
+            "*.hpp"
+            "*.ino"
+          ];
+
+          settings.global.excludes = [
+            ".direnv/**"
+          ];
+        };
+
+        treefmtCheck = treefmt-nix.lib.evalModule pkgs {
+          # Keep CI on the existing formatting baseline until legacy files are
+          # reformatted in a separate change.
+          projectRootFile = "flake.nix";
+
+          programs = {
             nixfmt.enable = true;
             statix.enable = true;
           };
 
-          settings.global.excludes = [
-            ".direnv/**"
-            "archive/**"
-          ];
+          settings.global.excludes = [ ".direnv/**" ];
         };
 
         lint = pkgs.writeShellApplication {
@@ -252,7 +277,7 @@
         formatter = treefmt.config.build.wrapper;
 
         checks = {
-          formatting = treefmt.config.build.check self;
+          formatting = treefmtCheck.config.build.check self;
           lint = runCheck lint;
           inherit firmware;
         };
