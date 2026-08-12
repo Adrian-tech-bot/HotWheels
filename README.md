@@ -133,8 +133,7 @@ nix fmt
 # Check formatting, Nix linting, and firmware compilation
 nix flake check
 
-# Run an individual command
-nix run .#lint
+# Run an individual firmware check
 nix run .#firmware-check
 nix run .#flash -- "$PORT"
 nix run .#monitor -- "$PORT"

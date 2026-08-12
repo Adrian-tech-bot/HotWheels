@@ -37,7 +37,7 @@
       arduino-esp32-index,
       esp32-bluepad32-index,
       ...
-    }@attrs:
+    }:
     let
       # arduino-nix expects each "package" entry in a package index JSON to have a
       # top-level `tools` field. The Bluepad32 index intentionally omits it (it
@@ -80,6 +80,12 @@
             statix.enable = true;
           };
 
+          settings.formatter.deadnix = {
+            command = "${pkgs.deadnix}/bin/deadnix";
+            options = [ "--edit" ];
+            includes = [ "*.nix" ];
+          };
+
           # clang-format's default file set does not include Arduino sketches.
           settings.formatter.clang-format.includes = [
             "*.c"
@@ -98,7 +104,8 @@
 
         treefmtCheck = treefmt-nix.lib.evalModule pkgs {
           # Keep CI on the existing formatting baseline until legacy files are
-          # reformatted in a separate change.
+          # reformatted in a separate change. Deadnix is included here as a
+          # read-only check for unused Nix bindings.
           projectRootFile = "flake.nix";
 
           programs = {
@@ -106,15 +113,13 @@
             statix.enable = true;
           };
 
-          settings.global.excludes = [ ".direnv/**" ];
-        };
+          settings.formatter.deadnix = {
+            command = "${pkgs.deadnix}/bin/deadnix";
+            options = [ "--fail" ];
+            includes = [ "*.nix" ];
+          };
 
-        lint = pkgs.writeShellApplication {
-          name = "lint";
-          runtimeInputs = [ pkgs.statix ];
-          text = ''
-            statix check flake.nix
-          '';
+          settings.global.excludes = [ ".direnv/**" ];
         };
 
         preCommit = pre-commit-hooks.lib.${system}.run {
@@ -226,15 +231,6 @@
           '';
         };
 
-        runCheck =
-          pkg:
-          pkgs.runCommand "hot-wheels-${pkg.name}-check" { nativeBuildInputs = [ pkg ]; } ''
-            cp -R ${self} source
-            chmod -R u+w source
-            cd source
-            ${pkg}/bin/${pkg.name}
-            touch "$out"
-          '';
       in
       {
         packages = {
@@ -244,7 +240,6 @@
           inherit
             firmware
             flash
-            lint
             monitor
             ;
         };
@@ -263,6 +258,7 @@
             flash
             monitor
             pkgs.nixd
+            pkgs.deadnix
             pkgs.statix
             pkgs.nixfmt
             treefmt.config.build.wrapper
@@ -278,7 +274,6 @@
 
         checks = {
           formatting = treefmtCheck.config.build.check self;
-          lint = runCheck lint;
           inherit firmware;
         };
       }
