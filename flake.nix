@@ -143,6 +143,50 @@
             libraries = pkgs.lib.optionals hasBluepad32Library [ bluepadLibrary ];
           };
 
+        fqbn = "esp32-bluepad32:esp32:esp32";
+
+        sketchSource = builtins.path {
+          path = ./Hot_Wheels_arduino_firmware;
+          name = "Hot_Wheels_arduino_firmware";
+        };
+
+        arduinoCompileDatabase =
+          pkgs.runCommand "hot-wheels-arduino-compile-database"
+            {
+              nativeBuildInputs = [
+                arduinoCli
+                pkgs.jq
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME" "$out/build" "$TMPDIR/sketch/Hot_Wheels_arduino_firmware"
+              cp -R ${sketchSource}/. "$TMPDIR/sketch/Hot_Wheels_arduino_firmware/"
+
+              arduino-cli compile \
+                --only-compilation-database \
+                --build-path "$out/build" \
+                --fqbn ${fqbn} \
+                --build-property compiler.cpp.extra_flags=-I${sketchSource} \
+                "$TMPDIR/sketch/Hot_Wheels_arduino_firmware"
+
+              jq --arg sourceRoot ${sketchSource} '
+                walk(
+                  if type == "string"
+                  then gsub($sourceRoot; "@HOT_WHEELS_WORKSPACE_ROOT@")
+                  else .
+                  end
+                )
+                |
+                . as $commands
+                | first(
+                    $commands[]
+                    | select(.file | endswith("/sketch/Hot_Wheels_arduino_firmware.ino.cpp"))
+                  ) as $sketch_command
+                | $commands + [($sketch_command | .file = "@HOT_WHEELS_WORKSPACE_SKETCH@")]
+              ' "$out/build/compile_commands.json" > "$out/compile_commands.json"
+            '';
+
         python3 = pkgs.python3.withPackages (ps: [ ps.pyserial ]);
 
         firmware =
@@ -158,7 +202,7 @@
               export HOME="$TMPDIR/hot-wheels-arduino-home"
               mkdir -p "$HOME" "$out"
               arduino-cli compile \
-                --fqbn esp32-bluepad32:esp32:esp32 \
+                --fqbn ${fqbn} \
                 --output-dir "$out" \
                 ${self}/Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
             '';
@@ -174,7 +218,7 @@
             export HOME="$TMPDIR/hot-wheels-arduino-home"
             mkdir -p "$HOME"
             exec arduino-cli compile \
-              --fqbn esp32-bluepad32:esp32:esp32 \
+              --fqbn ${fqbn} \
               Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino
           '';
         };
@@ -258,6 +302,25 @@
           ];
 
           shellHook = preCommit.shellHook + ''
+            output="$PWD/.direnv/arduino-intellisense/compile_commands.json"
+            tmp="$output.tmp"
+            mkdir -p "$(dirname "$output")"
+            ${pkgs.jq}/bin/jq \
+              --arg root "$PWD/Hot_Wheels_arduino_firmware" \
+              --arg sketch "$PWD/Hot_Wheels_arduino_firmware/Hot_Wheels_arduino_firmware.ino" \
+              'walk(
+                if type == "string"
+                then gsub("@HOT_WHEELS_WORKSPACE_ROOT@"; $root)
+                else .
+                end
+              )
+              | map(if .file == "@HOT_WHEELS_WORKSPACE_SKETCH@" then .file = $sketch else . end)' \
+              <${arduinoCompileDatabase}/compile_commands.json >"$tmp"
+            if ! cmp -s "$tmp" "$output" 2>/dev/null; then
+              mv "$tmp" "$output"
+            else
+              rm "$tmp"
+            fi
             echo "Arduino dev shell ready."
             echo "Try: arduino-cli board listall | grep -i bluepad"
           '';
@@ -267,7 +330,7 @@
 
         checks = {
           formatting = treefmtCheck.config.build.check self;
-          inherit firmware;
+          inherit firmware arduinoCompileDatabase;
         };
       }
     );
