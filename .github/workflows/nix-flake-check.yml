@@ -20,6 +20,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Allow unprivileged user namespaces
+        run: echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
 
