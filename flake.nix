@@ -117,14 +117,14 @@
             libraries = pkgs.lib.optionals hasBluepad32Library [ bluepadLibrary ];
           };
 
-        python = pkgs.python3.withPackages (ps: [ ps.pyserial ]);
+        python3 = pkgs.python3.withPackages (ps: [ ps.pyserial ]);
 
         firmware =
           pkgs.runCommand "hot-wheels-firmware"
             {
               nativeBuildInputs = [
                 arduinoCli
-                python
+                python3
               ];
             }
             ''
@@ -141,7 +141,7 @@
           name = "firmware-check";
           runtimeInputs = [
             arduinoCli
-            python
+            python3
           ];
           text = ''
             export TMPDIR="''${TMPDIR:-/tmp}"
@@ -157,7 +157,7 @@
           name = "flash";
           runtimeInputs = [
             arduinoCli
-            python
+            python3
           ];
           text = ''
             if [ "$#" -ne 1 ]; then
@@ -184,7 +184,7 @@
           name = "monitor";
           runtimeInputs = [
             arduinoCli
-            python
+            python3
           ];
           text = ''
             if [ "$#" -ne 1 ]; then
@@ -234,7 +234,7 @@
 
           packages = [
             arduinoCli
-            python
+            python3
             flash
             monitor
             pkgs.nixd
