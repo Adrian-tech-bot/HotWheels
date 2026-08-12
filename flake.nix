@@ -92,18 +92,6 @@
           '';
         };
 
-        check = pkgs.writeShellApplication {
-          name = "check";
-          runtimeInputs = [ pkgs.nix ];
-          text = ''
-            if [ "$#" -eq 0 ]; then
-              exec nix flake check "${self}"
-            else
-              exec nix flake check "$@"
-            fi
-          '';
-        };
-
         preCommit = pre-commit-hooks.lib.${system}.run {
           src = self;
           hooks = {
@@ -229,7 +217,6 @@
           default = firmware;
           firmware-check = firmwareCheck;
           inherit
-            check
             firmware
             flash
             lint
