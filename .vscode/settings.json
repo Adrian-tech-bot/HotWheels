@@ -21,5 +21,14 @@
       }
     }
   },
+  "emeraldwalk.runonsave": {
+    "ignoreUnchangedFiles": true,
+    "commands": [
+      {
+        "match": "\\.(nix|ino|c|cc|cpp|h|hh|hpp|md|json|yml|yaml)$",
+        "cmd": "cd \"${workspaceFolder}\" && nix fmt -- \"${relativeFile}\""
+      }
+    ]
+  },
   "C_Cpp.default.cppStandard": "gnu++11"
 }

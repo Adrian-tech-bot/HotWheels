@@ -1,5 +1,6 @@
 {
   "recommendations": [
+    "emeraldwalk.runonsave",
     "jnoortheen.nix-ide",
     "mkhl.direnv",
     "ms-vscode.cpptools"
