@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Nix: build firmware",
+      "type": "shell",
+      "command": "nix build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nix: format",
+      "type": "shell",
+      "command": "nix fmt",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nix: flake check",
+      "type": "shell",
+      "command": "nix flake check",
+      "problemMatcher": []
+    },
+    {
+      "label": "Arduino: list boards",
+      "type": "shell",
+      "command": "nix run .#arduino-cli -- board list",
+      "problemMatcher": []
+    },
+    {
+      "label": "Arduino: flash firmware",
+      "type": "shell",
+      "command": "nix run .#flash -- \"${input:serialPort}\"",
+      "dependsOn": [
+        "Nix: build firmware"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Arduino: monitor serial",
+      "type": "shell",
+      "command": "nix run .#monitor -- \"${input:serialPort}\"",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "serialPort",
+      "type": "promptString",
+      "description": "Serial port for the ESP32 board"
+    }
+  ]
+}
