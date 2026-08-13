@@ -72,6 +72,41 @@
 
         globalExcludes = [ ".direnv/**" ];
 
+        markdownlintConfig = pkgs.writeText "hot-wheels.markdownlint-cli2.jsonc" (
+          builtins.toJSON {
+            config = {
+              MD010.code_blocks = false;
+              MD013 = false;
+            };
+          }
+        );
+
+        markdownlintExcludeArgs = map (pattern: "!${pattern}") globalExcludes;
+
+        markdownlint = pkgs.writeShellApplication {
+          name = "markdownlint";
+          runtimeInputs = [ pkgs.markdownlint-cli2 ];
+          text = ''
+            if [ "$#" -eq 0 ]; then
+              set -- "**/*.md" ${pkgs.lib.escapeShellArgs markdownlintExcludeArgs}
+            fi
+            exec markdownlint-cli2 --config ${markdownlintConfig} "$@"
+          '';
+        };
+
+        markdownFormat = pkgs.writeShellApplication {
+          name = "markdown-format";
+          runtimeInputs = [
+            pkgs.markdownlint-cli2
+            pkgs.prettier
+          ];
+          text = ''
+            markdownlint-cli2 --config ${markdownlintConfig} --fix "$@" || true
+            prettier --write "$@"
+            markdownlint-cli2 --config ${markdownlintConfig} "$@"
+          '';
+        };
+
         treefmtCommon = {
           projectRootFile = "flake.nix";
           settings.global.excludes = globalExcludes;
@@ -83,7 +118,12 @@
             programs = {
               clang-format.enable = true;
               nixfmt.enable = true;
-              prettier.enable = true;
+              prettier = {
+                enable = true;
+                excludes = [ "*.md" ];
+              };
+              shellcheck.enable = true;
+              shfmt.enable = true;
               statix.enable = true;
               deadnix.enable = true;
             };
@@ -98,6 +138,10 @@
                 "*.hpp"
                 "*.ino"
               ];
+              formatter.markdown = {
+                command = markdownFormat;
+                includes = [ "*.md" ];
+              };
             };
           }
         );
@@ -283,6 +327,7 @@
           inherit
             firmware
             flash
+            markdownlint
             monitor
             ;
         };
@@ -299,6 +344,7 @@
             arduinoCli
             python3
             flash
+            markdownlint
             monitor
             pkgs.nixd
             pkgs.nixfmt
