@@ -70,9 +70,11 @@
           inherit system overlays;
         };
 
+        globalExcludes = [ ".direnv/**" ];
+
         treefmtCommon = {
           projectRootFile = "flake.nix";
-          settings.global.excludes = [ ".direnv/**" ];
+          settings.global.excludes = globalExcludes;
         };
 
         treefmt = treefmt-nix.lib.evalModule pkgs (
