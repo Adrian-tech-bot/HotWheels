@@ -107,6 +107,14 @@
           '';
         };
 
+        markdownlintCheck =
+          pkgs.runCommand "markdownlint-check" { nativeBuildInputs = [ markdownlint ]; }
+            ''
+              cd ${self}
+              markdownlint
+              touch "$out"
+            '';
+
         treefmtCommon = {
           projectRootFile = "flake.nix";
           settings.global.excludes = globalExcludes;
@@ -142,24 +150,6 @@
                 command = markdownFormat;
                 includes = [ "*.md" ];
               };
-            };
-          }
-        );
-
-        treefmtCheck = treefmt-nix.lib.evalModule pkgs (
-          treefmtCommon
-          // {
-            # Keep CI on the existing formatting baseline until legacy files are
-            # reformatted in a separate change. Deadnix is included here as a
-            # read-only check for unused Nix bindings.
-            programs = {
-              nixfmt.enable = true;
-              statix.enable = true;
-              deadnix.enable = true;
-            };
-
-            settings = treefmtCommon.settings // {
-              formatter.deadnix.options = [ "--fail" ];
             };
           }
         );
@@ -378,8 +368,12 @@
         formatter = treefmt.config.build.wrapper;
 
         checks = {
-          formatting = treefmtCheck.config.build.check self;
-          inherit firmware arduinoCompileDatabase;
+          formatting = treefmt.config.build.check self;
+          inherit
+            arduinoCompileDatabase
+            firmware
+            markdownlintCheck
+            ;
         };
       }
     );

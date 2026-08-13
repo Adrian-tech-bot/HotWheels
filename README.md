@@ -127,11 +127,14 @@ If the board does not enter upload mode automatically, hold its **BOOT** button 
 The flake provides formatting, linting, and firmware compilation checks:
 
 ```sh
-# Format Nix files
+# Format supported files and apply automatic lint fixes
 nix fmt
 
-# Check formatting, Nix linting, and firmware compilation
+# Check formatting, linting, and firmware compilation
 nix flake check
+
+# Run the Markdown lint check separately
+nix run .#markdownlint
 
 # Run an individual firmware check
 nix run .#firmware-check
