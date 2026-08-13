@@ -8,7 +8,7 @@ This repository contains Arduino, ESP32, C++ codebases, hardware design, mechani
 
 ## Project Structure
 
-```
+```text
 Hot_Wheels_RC/
 ├── archive/                    -> archival assests, may be still relevant
 ├── docs/                       -> Documentation for the project
@@ -26,17 +26,17 @@ To ensure smooth teamwork:
 - **Create a branch** for any experimental or testing-specific changes. Once stable, we can discuss merging them into the main codebase.
 - If you have questions, feel free to reach out to Aron or Joshan
 
-
 ---
 
-Contributors:  
+Contributors:
+
 - **Shea, Aron**
 
 ---
 
 ## Nix Flake Quickstart (recommended)
 
-This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and pins the *two ESP32 package indexes* needed for this project:
+This repo ships a `flake.nix` that pins the full Arduino toolchain (via Nix) and pins the _two ESP32 package indexes_ needed for this project:
 
 - Espressif Arduino-ESP32 index
 - Bluepad32 Arduino-ESP32 fork index
