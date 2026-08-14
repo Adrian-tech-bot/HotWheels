@@ -6,12 +6,8 @@ const char *NVS_NAMESPACE = "hwrc";
 const char *NVS_KEY_STEER_TRIM = "trim";
 
 // Optional: WiFi OTA flashing (Arduino IDE network upload)
-#include <WiFi.h>
 #include <ArduinoOTA.h>
-
-// Third-party (Arduino Library Manager): "StreamUtils" by Benoit Blanchon
-// Provides LoggingPrint which duplicates writes to a second Print.
-#include <StreamUtils.h>
+#include <WiFi.h>
 
 #if __has_include("wifi_secrets.h")
 #include "wifi_secrets.h"
@@ -47,19 +43,56 @@ static WiFiClient logClient;
 static volatile bool otaInProgress = false;
 static volatile int lastOtaPercentPrinted = -1;
 
-// Arduino IDE cannot open Serial Monitor on an OTA "Network port".
-// We keep ALL existing Serial.print/println/printf calls and mirror them to the TCP client.
-// This uses StreamUtils::LoggingPrint rather than a custom tee implementation.
+// Arduino IDE cannot open Serial Monitor on an OTA "Network port". Mirror the
+// existing serial output to the TCP client without adding a third-party
+// library.
 
-static auto& USBSerial = ::Serial;
-static StreamUtils::LoggingPrint SerialMirror(USBSerial, logClient);
+static auto &USBSerial = ::Serial;
 
-// Redefine Serial in THIS sketch so existing Serial.* calls are mirrored to WiFi logs.
+class SerialMirrorPrint : public Print {
+public:
+  SerialMirrorPrint(Print &usbSerial, WiFiClient &networkClient)
+      : usbSerial(usbSerial), networkClient(networkClient) {}
+
+  size_t write(uint8_t data) override {
+    const size_t written = usbSerial.write(data);
+    if (networkClient && networkClient.connected()) {
+      networkClient.write(data);
+    }
+    return written;
+  }
+
+  size_t write(const uint8_t *buffer, size_t size) override {
+    const size_t written = usbSerial.write(buffer, size);
+    if (networkClient && networkClient.connected()) {
+      networkClient.write(buffer, size);
+    }
+    return written;
+  }
+
+  void flush() override {
+    usbSerial.flush();
+    if (networkClient && networkClient.connected()) {
+      networkClient.flush();
+    }
+  }
+
+private:
+  Print &usbSerial;
+  WiFiClient &networkClient;
+};
+
+static SerialMirrorPrint SerialMirror(USBSerial, logClient);
+
+// Redefine Serial in THIS sketch so existing Serial.* calls are mirrored to
+// WiFi logs.
 #define Serial SerialMirror
 
 static bool isLogClientConnected() {
   return logClient && logClient.connected();
 }
+
+void setServoAngle(int angle);
 
 static void handleLogServer() {
   if (WiFi.status() != WL_CONNECTED || LOG_TCP_PORT <= 0) {
@@ -80,12 +113,15 @@ static void handleLogServer() {
 
       String ip = WiFi.localIP().toString();
       // Print via Serial so it also goes to USB.
-      Serial.printf("Connected to HotWheelsRC logs at %s:%d\n", ip.c_str(), LOG_TCP_PORT);
+      Serial.printf("Connected to HotWheelsRC logs at %s:%d\n", ip.c_str(),
+                    LOG_TCP_PORT);
       Serial.printf("WiFi RSSI: %ld dBm\n", WiFi.RSSI());
-      Serial.println("Tip: this sketch only prints when events happen (boot, controller connect/disconnect, OTA, etc.)");
+      Serial.println("Tip: this sketch only prints when events happen (boot, "
+                     "controller connect/disconnect, OTA, etc.)");
     }
   } else {
-    // Drain any input so the socket stays healthy (we don't implement commands).
+    // Drain any input so the socket stays healthy (we don't implement
+    // commands).
     while (logClient.available()) {
       (void)logClient.read();
     }
@@ -111,6 +147,15 @@ ControllerPtr myController = nullptr;
 int Drive = 0;
 int Reverse = 0;
 int angle = 90;
+
+static void stopMotionForOTA() {
+  Drive = 0;
+  Reverse = 0;
+  angle = 90;
+  ledcWrite(FORWARD_PWM_CHANNEL, 0);
+  ledcWrite(BACK_PWM_CHANNEL, 0);
+  setServoAngle(angle);
+}
 
 // --- Steering trim (LB/RB) ---
 int STEERING_TRIM_DEG = 0;     // applied to steering angle (degrees)
@@ -154,7 +199,8 @@ static void saveSteeringTrim() {
 
 static void setupWiFiAndOTA() {
   if (strlen(WIFI_SSID) == 0) {
-    Serial.println("WiFi OTA disabled (WIFI_SSID not set). See wifi_secrets.example.h");
+    Serial.println(
+        "WiFi OTA disabled (WIFI_SSID not set). See wifi_secrets.example.h");
     return;
   }
 
@@ -202,6 +248,7 @@ static void setupWiFiAndOTA() {
   }
 
   ArduinoOTA.onStart([]() {
+    stopMotionForOTA();
     otaInProgress = true;
     lastOtaPercentPrinted = -1;
     Serial.println("OTA update start");
@@ -211,7 +258,8 @@ static void setupWiFiAndOTA() {
     otaInProgress = false;
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    const int pct = (total > 0) ? static_cast<int>((progress * 100U) / total) : 0;
+    const int pct =
+        (total > 0) ? static_cast<int>((progress * 100U) / total) : 0;
     // Printing too frequently can slow OTA. Only print every 5%.
     if (pct == 100 || (pct % 5 == 0 && pct != lastOtaPercentPrinted)) {
       lastOtaPercentPrinted = pct;
@@ -230,7 +278,8 @@ static void setupWiFiAndOTA() {
 
 void onConnectedController(ControllerPtr ctl) {
   if (myController == nullptr) {
-    Serial.printf("CALLBACK: Controller is connected, index=%d\n", ctl->index());
+    Serial.printf("CALLBACK: Controller is connected, index=%d\n",
+                  ctl->index());
     myController = ctl;
 
     // Initialize trim latch state on connect
@@ -245,7 +294,8 @@ void onConnectedController(ControllerPtr ctl) {
 
 void onDisconnectedController(ControllerPtr ctl) {
   if (myController == ctl) {
-    Serial.printf("CALLBACK: Controller is disconnected from index=%d\n", ctl->index());
+    Serial.printf("CALLBACK: Controller is disconnected from index=%d\n",
+                  ctl->index());
 
     angle = 90;
 
