@@ -11,6 +11,17 @@ on:
       - synchronize
       - ready_for_review
       - closed
+  issues:
+    types:
+      - edited
+      - closed
+      - reopened
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to reconcile
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -22,181 +33,260 @@ jobs:
     name: Roll up linked issues to native parents
     runs-on: ubuntu-latest
     steps:
-      - name: Link the pull request to every native parent ancestor
+      - name: Reconcile linked pull requests
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pullNumber = context.payload.pull_request?.number;
+            const defaultBranch = context.payload.repository.default_branch;
+            const startMarker = '<!-- pr-link-rollup:start -->';
+            const endMarker = '<!-- pr-link-rollup:end -->';
+            const managedBlockPattern = /<!-- pr-link-rollup:start -->[\s\S]*?<!-- pr-link-rollup:end -->/;
+            const keywordPattern = /(?:close[sd]?|fix(?:e[sd])?|resolv(?:e[sd])?)\s*:?[ \t]*#(\d+)/gi;
 
-            if (!pullNumber) {
-              core.setFailed('This workflow must run for a pull_request event.');
-              return;
+            function uniqueRepositoryNodes(nodes) {
+              return [...new Map(
+                nodes
+                  .filter((pullRequest) => pullRequest?.repository?.nameWithOwner === `${owner}/${repo}`)
+                  .map((pullRequest) => [pullRequest.number, pullRequest]),
+              ).values()];
             }
 
-            const query = `
-              query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  pullRequest(number: $number) {
-                    body
-                    baseRefName
-                    closingIssuesReferences(first: 100) {
-                      nodes {
-                        number
-                        repository {
-                          nameWithOwner
+            async function linkedPullRequestsForIssue(issueNumber) {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    issue(number: $number) {
+                      closedByPullRequestsReferences(first: 100) {
+                        nodes {
+                          number
+                          baseRefName
+                          repository { nameWithOwner }
+                        }
+                      }
+                      manuallyLinked: closedByPullRequestsReferences(first: 100, userLinkedOnly: true) {
+                        nodes {
+                          number
+                          baseRefName
+                          repository { nameWithOwner }
                         }
                       }
                     }
                   }
                 }
+              `;
+
+              const data = await github.graphql(query, {
+                owner,
+                repo,
+                number: issueNumber,
+              });
+              const issue = data.repository.issue;
+
+              if (!issue) {
+                core.info(`Issue #${issueNumber} was not found.`);
+                return [];
               }
-            `;
 
-            const data = await github.graphql(query, {
-              owner,
-              repo,
-              number: pullNumber,
-            });
-            const pullRequest = data.repository.pullRequest;
-
-            if (!pullRequest) {
-              core.setFailed(`Pull request #${pullNumber} was not found.`);
-              return;
+              return uniqueRepositoryNodes([
+                ...(issue.closedByPullRequestsReferences?.nodes || []),
+                ...(issue.manuallyLinked?.nodes || []),
+              ]);
             }
 
-            if (pullRequest.baseRefName !== context.payload.repository.default_branch) {
-              core.info(
-                `Skipping pull request #${pullNumber}: native keyword links only apply to the default branch.`,
+            async function reconcilePullRequest(pullNumber) {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      body
+                      baseRefName
+                      closingIssuesReferences(first: 100) {
+                        nodes {
+                          number
+                          repository { nameWithOwner }
+                        }
+                      }
+                      manuallyLinked: closingIssuesReferences(first: 100, userLinkedOnly: true) {
+                        nodes {
+                          number
+                          repository { nameWithOwner }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+
+              const data = await github.graphql(query, {
+                owner,
+                repo,
+                number: pullNumber,
+              });
+              const pullRequest = data.repository.pullRequest;
+
+              if (!pullRequest) {
+                core.info(`Pull request #${pullNumber} was not found.`);
+                return;
+              }
+
+              if (pullRequest.baseRefName !== defaultBranch) {
+                core.info(
+                  `Skipping pull request #${pullNumber}: its base branch is not the default branch.`,
+                );
+                return;
+              }
+
+              const linkedIssues = uniqueRepositoryNodes([
+                ...(pullRequest.closingIssuesReferences?.nodes || []),
+                ...(pullRequest.manuallyLinked?.nodes || []),
+              ]);
+              const manuallyLinkedIssues = new Set(
+                (pullRequest.manuallyLinked?.nodes || [])
+                  .filter((issue) => issue?.repository?.nameWithOwner === `${owner}/${repo}`)
+                  .map((issue) => issue.number),
               );
-              return;
-            }
+              const body = pullRequest.body || '';
+              const managedBlock = body.match(managedBlockPattern)?.[0];
+              const managedNumbers = new Set(
+                [...(managedBlock || '').matchAll(keywordPattern)].map((match) => Number(match[1])),
+              );
+              const directIssues = linkedIssues.filter((issue) => !managedNumbers.has(issue.number));
+              const directlyLinked = new Set(directIssues.map((issue) => issue.number));
+              const ancestors = new Set();
+              const walkedParents = new Set();
 
-            const linkedIssues = pullRequest.closingIssuesReferences.nodes.filter(
-              (issue) => issue?.repository?.nameWithOwner === `${owner}/${repo}`,
-            );
-            const startMarker = '<!-- pr-link-rollup:start -->';
-            const endMarker = '<!-- pr-link-rollup:end -->';
-            const body = pullRequest.body || '';
-            const managedBlock = body.match(
-              /<!-- pr-link-rollup:start -->[\s\S]*?<!-- pr-link-rollup:end -->/,
-            )?.[0];
-            const managedNumbers = new Set(
-              [...(managedBlock || '').matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolv(?:e[sd])?)\s*:?[ \t]*#(\d+)/gi)].map(
-                (match) => Number(match[1]),
-              ),
-            );
-            const directIssues = linkedIssues.filter((issue) => !managedNumbers.has(issue.number));
-            const directlyLinked = new Set(directIssues.map((issue) => issue.number));
-            const ancestors = new Set();
-            const walkedParents = new Set();
+              for (const linkedIssue of directIssues) {
+                let childNumber = linkedIssue.number;
 
-            for (const linkedIssue of directIssues) {
-              let childNumber = linkedIssue.number;
+                for (let depth = 0; depth < 50; depth += 1) {
+                  let parent;
 
-              for (let depth = 0; depth < 50; depth += 1) {
-                let parent;
-
-                try {
-                  const response = await github.request(
-                    'GET /repos/{owner}/{repo}/issues/{issue_number}/parent',
-                    {
-                      owner,
-                      repo,
-                      issue_number: childNumber,
-                      headers: {
-                        'X-GitHub-Api-Version': '2022-11-28',
+                  try {
+                    const response = await github.request(
+                      'GET /repos/{owner}/{repo}/issues/{issue_number}/parent',
+                      {
+                        owner,
+                        repo,
+                        issue_number: childNumber,
+                        headers: {
+                          'X-GitHub-Api-Version': '2022-11-28',
+                        },
                       },
-                    },
-                  );
-                  parent = response.data;
-                } catch (error) {
-                  if (error.status === 404) {
+                    );
+                    parent = response.data;
+                  } catch (error) {
+                    if (error.status === 404) {
+                      break;
+                    }
+                    throw error;
+                  }
+
+                  if (!parent?.number || walkedParents.has(parent.number)) {
                     break;
                   }
-                  throw error;
-                }
 
-                if (!parent?.number || walkedParents.has(parent.number)) {
-                  break;
+                  walkedParents.add(parent.number);
+                  if (!directlyLinked.has(parent.number)) {
+                    ancestors.add(parent.number);
+                  }
+                  childNumber = parent.number;
                 }
-
-                walkedParents.add(parent.number);
-                if (!directlyLinked.has(parent.number)) {
-                  ancestors.add(parent.number);
-                }
-                childNumber = parent.number;
               }
-            }
 
-            const unmanagedBody = managedBlock ? body.replace(managedBlock, '') : body;
-            const bodyReferences = new Set(
-              [...unmanagedBody.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolv(?:e[sd])?)\s*:?[ \t]*#(\d+)/gi)].map(
-                (match) => Number(match[1]),
-              ),
-            );
-            const missingAncestors = [...ancestors]
-              .filter((issueNumber) => !directlyLinked.has(issueNumber))
-              .filter((issueNumber) => !bodyReferences.has(issueNumber))
-              .sort((a, b) => a - b);
+              const unmanagedBody = managedBlock ? body.replace(managedBlock, '') : body;
+              const bodyReferences = new Set(
+                [...unmanagedBody.matchAll(keywordPattern)].map((match) => Number(match[1])),
+              );
+              const missingAncestors = [...ancestors]
+                .filter((issueNumber) => !directlyLinked.has(issueNumber))
+                .filter((issueNumber) => !bodyReferences.has(issueNumber))
+                .sort((a, b) => a - b);
 
-            if (missingAncestors.length === 0 && !managedBlock) {
-              core.info(`No parent ancestors need to be linked for pull request #${pullNumber}.`);
-            } else {
-              const replacementBlock = missingAncestors.length
-                ? [
-                    startMarker,
-                    ...missingAncestors.map((issueNumber) => `Resolves #${issueNumber}`),
-                    endMarker,
-                  ].join('\n')
-                : '';
-              const nextBody = managedBlock
-                ? body.replace(managedBlock, replacementBlock)
-                : `${body.trimEnd()}\n\n${replacementBlock}\n`;
+              if (missingAncestors.length === 0 && !managedBlock) {
+                core.info(`No parent ancestors need to be linked for pull request #${pullNumber}.`);
+              } else {
+                const replacementBlock = missingAncestors.length
+                  ? [
+                      startMarker,
+                      ...missingAncestors.map((issueNumber) => `Resolves #${issueNumber}`),
+                      endMarker,
+                    ].join('\n')
+                  : '';
+                const nextBody = managedBlock
+                  ? body.replace(managedBlock, replacementBlock)
+                  : `${body.trimEnd()}\n\n${replacementBlock}\n`;
 
-              if (nextBody !== body) {
-                await github.rest.pulls.update({
-                  owner,
-                  repo,
-                  pull_number: pullNumber,
-                  body: nextBody,
-                });
+                if (nextBody !== body) {
+                  await github.rest.pulls.update({
+                    owner,
+                    repo,
+                    pull_number: pullNumber,
+                    body: nextBody,
+                  });
+
+                  core.info(
+                    `Updated pull request #${pullNumber} managed ancestor links to: ${missingAncestors
+                      .map((issueNumber) => `#${issueNumber}`)
+                      .join(', ') || 'none'}`,
+                  );
+                } else {
+                  core.info(`Pull request #${pullNumber} already has the current ancestor links.`);
+                }
+              }
+
+              const pullRequestEvent = context.eventName === 'pull_request';
+              if (pullRequestEvent && context.payload.action === 'closed' && context.payload.pull_request.merged === true) {
+                const issuesToClose = linkedIssues.filter(
+                  (issue) => !manuallyLinkedIssues.has(issue.number) && !managedNumbers.has(issue.number),
+                );
+
+                for (const issue of issuesToClose) {
+                  await github.rest.issues.update({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    state: 'closed',
+                    state_reason: 'completed',
+                  });
+                }
 
                 core.info(
-                  `Updated pull request #${pullNumber} managed ancestor links to: ${missingAncestors
-                    .map((issueNumber) => `#${issueNumber}`)
-                    .join(', ') || 'none'}`,
+                  `Closed GitHub-authoritative closing reference issue(s): ${issuesToClose
+                    .map((issue) => `#${issue.number}`)
+                    .join(', ') || 'none'}. Manually linked and managed ancestor issue(s) were excluded.`,
                 );
-              } else {
-                core.info(`Pull request #${pullNumber} already has the current ancestor links.`);
               }
             }
 
-            if (context.payload.action === 'closed' && context.payload.pull_request.merged === true) {
-              const managedAncestorNumbers = managedNumbers;
-              const issuesToClose = linkedIssues.filter(
-                (issue) => !managedAncestorNumbers.has(issue.number),
-              );
-
-              for (const issue of issuesToClose) {
-                await github.rest.issues.update({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  state: 'closed',
-                  state_reason: 'completed',
-                });
+            if (context.eventName === 'issues') {
+              const issueNumber = context.payload.issue?.number;
+              if (!issueNumber) {
+                core.setFailed('This workflow must run for an issue event with an issue number.');
+                return;
               }
 
-              core.info(
-                `Closed user-authored same-repository closing reference issue(s): ${issuesToClose
-                  .map((issue) => `#${issue.number}`)
-                  .join(', ') || 'none'}. Generated ancestor issue(s) were excluded: ${[
-                  ...managedAncestorNumbers,
-                ]
-                  .map((issueNumber) => `#${issueNumber}`)
-                  .join(', ') || 'none'}.`,
-              );
+              const linkedPullRequests = await linkedPullRequestsForIssue(issueNumber);
+              if (linkedPullRequests.length === 0) {
+                core.info(`No linked pull requests found for issue #${issueNumber}.`);
+                return;
+              }
+
+              for (const pullRequest of linkedPullRequests) {
+                await reconcilePullRequest(pullRequest.number);
+              }
+              return;
             }
+
+            const pullNumber = context.eventName === 'workflow_dispatch'
+              ? Number(context.payload.inputs?.pr_number)
+              : context.payload.pull_request?.number;
+
+            if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+              core.setFailed('A valid pull request number is required.');
+              return;
+            }
+
+            await reconcilePullRequest(pullNumber);
