@@ -45,8 +45,8 @@ body:
       label: Purchase
       description: Select Yes when this task requires purchasing something; otherwise leave it unset.
       options:
-        - No
-        - Yes
+        - "No"
+        - "Yes"
       default: 0
     validations:
       required: true
