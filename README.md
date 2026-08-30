@@ -10,7 +10,7 @@ This repository contains Arduino, ESP32, C++ codebases, hardware design, mechani
 
 ```text
 Hot_Wheels_RC/
-├── archive/                    -> archival assests, may be still relevant
+├── archive/                    -> archival assets, may be still relevant
 ├── docs/                       -> Documentation for the project
 ├── hardware_design/            -> CAD and schematic files for the hardware components
 │   ├── Hot_Wheels_3d_model/    -> 3D model exported files (e.g., .stl, .step) for manufacturing and prototyping
@@ -124,17 +124,18 @@ If the board does not enter upload mode automatically, hold its **BOOT** button 
 
 ### Development checks
 
-The flake provides formatting, linting, and firmware compilation checks:
+The flake provides repository-wide maintenance and checks:
 
 ```sh
-# Format supported files and apply automatic lint fixes
+# Fix and validate the repository
 nix fmt
+# or, from the development shell
+fmt
 
-# Check formatting, linting, and firmware compilation
+# Check the repository
 nix flake check
-
-# Run the Markdown lint check separately
-nix run .#markdownlint
+# or, from the development shell
+chk
 
 # Run an individual firmware check
 nix run .#firmware-check
@@ -142,7 +143,7 @@ nix run .#flash -- "$PORT"
 nix run .#monitor -- "$PORT"
 ```
 
-The development shell also installs a pre-commit hook that runs `nix flake check`.
+The development shell also installs repository checks as pre-commit hooks.
 
 ### VS Code workflow
 
