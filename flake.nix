@@ -164,7 +164,7 @@
             repo-quality = {
               enable = true;
               name = "Repository formatting and linting";
-              entry = "${pkgs.lib.getExe pkgs.nix} build --no-link .#checks.${system}.repo-quality";
+              entry = "nix build --no-link .#checks.${system}.repo-quality";
               files = "\\.(c|cc|cpp|h|hh|hpp|ino|json|lock|md|nix|sh|ya?ml)$|^\\.envrc$";
               pass_filenames = false;
             };
@@ -184,7 +184,7 @@
         '';
 
         checkRepo = pkgs.writeShellScriptBin "chk" ''
-          exec ${pkgs.lib.getExe pkgs.nix} flake check "$@"
+          exec nix flake check "$@"
         '';
 
         arduinoCli =
